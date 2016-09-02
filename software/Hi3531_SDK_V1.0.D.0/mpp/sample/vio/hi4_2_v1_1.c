@@ -686,15 +686,6 @@ int main(int argc, char *argv[])
 		int height;
 	} cardInfoS;
 
-	cardInfoS.i2cFd = open("/dev/i2c", O_RDWR);
-	cardInfoS.i2cFlag = 0;
-
-	adv7441_reset(cardInfoS.i2cFlag, cardInfoS.i2cFd);
-	adv7441_read_resolution(cardInfoS.i2cFlag, cardInfoS.i2cFd,
-		   &cardInfoS.width, &cardInfoS.height);
-	printf("cardInfoS.width: %d\n",cardInfoS.width);
-	printf("cardInfoS.height: %d\n",cardInfoS.height);
-
 	if(ret!=0)  exit(ret);
 	pid_t pid;
 	if((pid=fork())==-1) {printf("Error in fork\n");exit(1);}
@@ -825,6 +816,21 @@ int main(int argc, char *argv[])
 	int num;
 	char buf[MAXDATASIZE];
 
+	struct CARD_INFO_S {
+		int i2cFd;
+		char i2cFlag;		// 0: i2c; 1: gpioi2c	
+		char plugin;	// 0:unplug 1:plugin
+		char avformat;	// for sii9135
+		char powerStat;
+
+		int width;
+		int height;
+	} cardInfoS;
+
+		cardInfoS.i2cFd = open("/dev/i2c", O_RDWR);
+		cardInfoS.i2cFlag = 0;
+	
+		sii9135_init(0,cardInfoS.i2cFlag,cardInfoS.i2cFd);
 /*	struct timeval tv;
 	fd_set readfds;
 	tv.tv_sec=0;
@@ -890,6 +896,11 @@ int main(int argc, char *argv[])
 			
 			if(!strcmp(buf,"exit"))	break;
 			memset(buf,'\0',sizeof(buf));
+
+		sii9135_check_status(cardInfoS.i2cFlag,cardInfoS.i2cFd,&cardInfoS.width,&cardInfoS.height,&cardInfoS.avformat,&cardInfoS.plugin,&cardInfoS.powerStat);	
+
+		printf("cardInfoS.width: %d\n",cardInfoS.width);
+		printf("cardInfoS.height: %d\n",cardInfoS.height);
 		}		
 		wait(NULL);
 		close(sockfd);   
