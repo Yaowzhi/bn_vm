@@ -31,6 +31,9 @@ extern "C"{
 #include<sys/wait.h>
 
 #include<sys/time.h>
+
+#include<sii9135_utils.h>
+
 struct timeval tpstart,tpend;
 unsigned long timeuses;
 
@@ -439,8 +442,6 @@ HI_S32 SAMPLE_VIO_4HD_Homo_start()
         stVoPubAttr_0.u32BgColor = 0x00000000;//0x000000ff;
         stVoPubAttr_0.bDoubleFrame = HI_FALSE;  // In VI HD input case, this item should be set to HI_FALSE
 
-    //s32Ret = SAMPLE_COMM_VO_StartDevLayer(VoDev_0, &stVoPubAttr_0, gs_u32ViFrmRate);
-
     s32Ret = SAMPLE_COMM_VO_StartDevLayer(VoDev_0, &stVoPubAttr_0, gs_u32ViFrmRate);
     if (HI_SUCCESS != s32Ret)
     {
@@ -559,7 +560,7 @@ HI_S32 SAMPLE_VIO_4HD_Homo(HI_CHAR Input,HI_CHAR Output)
 	}*/
    		if(Output == '0')
 		{ 
-        		s32Ret = SAMPLE_COMM_VO_BindVpss(VoDev,0,(Input - '0'),VPSS_PRE0_CHN);
+        		s32Ret = SAMPLE_COMM_VO_BindVpss(VoDev,0,(Input - '0'),2);
         		if (HI_SUCCESS != s32Ret)
         		{
             			SAMPLE_PRT("SAMPLE_COMM_VO_BindVpss failed!\n");
@@ -569,7 +570,8 @@ HI_S32 SAMPLE_VIO_4HD_Homo(HI_CHAR Input,HI_CHAR Output)
 
    		if(Output == '1')
 		{ 
-        		s32Ret = SAMPLE_COMM_VO_BindVpss(VoDev_0,1,(4+(Input - '0')),VPSS_PRE0_CHN);
+        		//s32Ret = SAMPLE_COMM_VO_BindVpss(VoDev_0,1,(4+(Input - '0')),VPSS_PRE0_CHN);
+        		s32Ret = SAMPLE_COMM_VO_BindVpss(VoDev_0,1,(4+(Input - '0')),3);
         		if (HI_SUCCESS != s32Ret)
         		{
             			SAMPLE_PRT("SAMPLE_COMM_VO_BindVpss failed!\n");
@@ -615,22 +617,34 @@ HI_S32 SAMPLE_VIO_4HD_Homo_end(HI_CHAR Input,HI_CHAR Output)
 
    		if(Output == '0')
 		{ 
-        		s32Ret = SAMPLE_COMM_VO_UnBindVpss(VoDev,0,(Input - '0'),VPSS_PRE0_CHN);
+        		s32Ret = SAMPLE_COMM_VO_UnBindVpss(VoDev,0,(Input - '0'),2);
         		if (HI_SUCCESS != s32Ret)
         		{
             			SAMPLE_PRT("SAMPLE_COMM_VO_BindVpss failed!\n");
           			return s32Ret; // goto END_4HD_HOMO_6;
         		}
+			s32Ret = HI_MPI_VO_ClearChnBuffer(VoDev,0,HI_TRUE);
+			if(HI_SUCCESS != s32Ret)
+			{
+				SAMPLE_PRT("HI_MPI_VO_ClearChnBuffer failed!\n");
+				return s32Ret;
+			}
 		}
 
    		if(Output == '1')
 		{ 
-        		s32Ret = SAMPLE_COMM_VO_UnBindVpss(VoDev_0,1,(4+(Input - '0')),VPSS_PRE0_CHN);
+        		s32Ret = SAMPLE_COMM_VO_UnBindVpss(VoDev_0,1,(4+(Input - '0')),3);
         		if (HI_SUCCESS != s32Ret)
         		{
             			SAMPLE_PRT("SAMPLE_COMM_VO_BindVpss failed!\n");
           			return s32Ret; // goto END_4HD_HOMO_6;
         		}
+			s32Ret = HI_MPI_VO_ClearChnBuffer(VoDev_0,1,HI_TRUE);
+			if(HI_SUCCESS != s32Ret)
+			{
+				SAMPLE_PRT("HI_MPI_VO_ClearChnBuffer failed!\n");
+				return s32Ret;
+			}
 		}
 /*    for(i=0;i<u32WndNum;i++)
     {
@@ -658,15 +672,37 @@ int main(int argc, char *argv[])
 	int ret,myPipe[2];
 	HI_S32 s32Ret;
 	ret=pipe(myPipe);
-
-	fcntl(myPipe[PIPE_STDIN],F_SETFL,O_NONBLOCK);
-
 	if(ret!=0)  exit(ret);
-	pid_t pid;
-	//if((pid=fork())==-1) {printf("Error in fork\n");exit(1);}
+	//fcntl(myPipe[PIPE_STDIN],F_SETFL,O_NONBLOCK);
 
-	//if(pid==0)
-	//{
+	struct CARD_INFO_S {
+		int i2cFd;
+		char i2cFlag;		// 0: i2c; 1: gpioi2c	
+		char plugin;	// 0:unplug 1:plugin
+		char avformat;	// for sii9135
+		char powerStat;
+
+		int width;
+		int height;
+	} cardInfoS;
+
+		cardInfoS.i2cFd = open("/dev/i2c", O_RDWR);
+		//cardInfoS.i2cFd = open("/dev/gpioi2c_3", O_RDWR);
+		cardInfoS.i2cFlag = 0;
+		sii9135_init(0,cardInfoS.i2cFlag,cardInfoS.i2cFd);
+		while(1)
+		{
+			sii9135_check_status(cardInfoS.i2cFlag,cardInfoS.i2cFd,&cardInfoS.width,&cardInfoS.height,&cardInfoS.avformat,&cardInfoS.plugin,&cardInfoS.powerStat);	
+			printf("cardInfoS.width: %d\n",cardInfoS.width);
+			printf("cardInfoS.height: %d\n",cardInfoS.height);
+			sleep(5);
+		}
+	//if(ret!=0)  exit(ret);
+	pid_t pid;
+	if((pid=fork())==-1) {printf("Error in fork\n");exit(1);}
+
+	if(pid==0)
+	{
 		char Lastbuffer_1=0;
 		char Lastbuffer_2=0;
 		char buffer[6];
@@ -675,9 +711,25 @@ int main(int argc, char *argv[])
     		signal(SIGINT, SAMPLE_VIO_HandleSig);
 	    	signal(SIGTERM, SAMPLE_VIO_HandleSig);
 
+
+	struct CARD_INFO_S {
+		int i2cFd;
+		char i2cFlag;		// 0: i2c; 1: gpioi2c	
+		char plugin;	// 0:unplug 1:plugin
+		char avformat;	// for sii9135
+		char powerStat;
+
+		int width;
+		int height;
+	} cardInfoS;
+
+		cardInfoS.i2cFd = open("/dev/i2c", O_RDWR);
+		cardInfoS.i2cFlag = 0;
+		sii9135_init(0,cardInfoS.i2cFlag,cardInfoS.i2cFd);
+
 	        SAMPLE_VIO_4HD_Homo_start();	
        		//close(myPipe[PIPE_STDOUT]);
-       			//read(myPipe[PIPE_STDIN],buffer,(sizeof(buffer) - 1));
+       			read(myPipe[PIPE_STDIN],buffer,(sizeof(buffer) - 1));
 		//close(myPipe[PIPE_STDIN]);
 
 		while(1)
@@ -700,9 +752,9 @@ int main(int argc, char *argv[])
 					//close(myPipe[PIPE_STDIN]);
 					SAMPLE_VIO_4HD_Homo_end('1','1');
 		 			//getchar();*/
-			printf("please input cmd \n");
-			scanf("%s",buffer);
-			timeRec();
+		//	printf("please input cmd \n");
+		//	scanf("%s",buffer);
+		//	timeRec();
 			if(!strcmp(buffer,"exit"))
 			{	
 			//	printf("exit !\n");
@@ -769,18 +821,21 @@ int main(int argc, char *argv[])
 				     bzero(buffer,sizeof(buffer));
 				}
 			}
-			printf("hdmiScene:%c\n",hdmiScene);
-			printf("vgaScene:%c\n",vgaScene);
-			timeRep();
-			printf("\n");
+		//	printf("hdmiScene:%c\n",hdmiScene);
+		//	printf("vgaScene:%c\n",vgaScene);
+		//	timeRep();
+		//	printf("\n");
        			//close(myPipe[PIPE_STDOUT]);
 
-       			//read(myPipe[PIPE_STDIN],buffer,(sizeof(buffer) - 1));
+		/*sii9135_check_status(cardInfoS.i2cFlag,cardInfoS.i2cFd,&cardInfoS.width,&cardInfoS.height,&cardInfoS.avformat,&cardInfoS.plugin,&cardInfoS.powerStat);	
+		printf("cardInfoS.width: %d\n",cardInfoS.width);
+		printf("cardInfoS.height: %d\n",cardInfoS.height);*/
+       			read(myPipe[PIPE_STDIN],buffer,(sizeof(buffer) - 1));
 			
 		}
 		
-	//}
-	/*else if(pid>0)
+	}
+	else if(pid>0)
 	{
 		
 	int sockfd;
@@ -790,19 +845,34 @@ int main(int argc, char *argv[])
 	socklen_t addrlen;
 	int num;
 	char buf[MAXDATASIZE];
-*/
+
+/*	struct CARD_INFO_S {
+		int i2cFd;
+		char i2cFlag;		// 0: i2c; 1: gpioi2c	
+		char plugin;	// 0:unplug 1:plugin
+		char avformat;	// for sii9135
+		char powerStat;
+
+		int width;
+		int height;
+	} cardInfoS;
+
+		cardInfoS.i2cFd = open("/dev/i2c", O_RDWR);
+		cardInfoS.i2cFlag = 0;
+	
+		sii9135_init(0,cardInfoS.i2cFlag,cardInfoS.i2cFd);*/
 /*	struct timeval tv;
 	fd_set readfds;
 	tv.tv_sec=0;
 	tv.tv_usec=500000;*/
 
-	/*memset(buf,'\0',sizeof(buf));
+	memset(buf,'\0',sizeof(buf));
 
 	if((sockfd=socket(AF_INET,SOCK_DGRAM,0))==-1)
 	{
 		perror("Creating socket failed.");
 		exit(1);
-	}*/
+	}
 /*	flags=fcntl(sockfd,F_GETFL,0);
 	if(-1==fcntl(sockfd,F_SETFL,flags|O_NONBLOCK))
 	{
@@ -813,7 +883,7 @@ int main(int argc, char *argv[])
 	FD_ZERO(&readfds);
 	FD_SET(sockfd,&readfds);*/
 
-/*	bzero(&server,sizeof(server));
+	bzero(&server,sizeof(server));
 	server.sin_family=AF_INET;
 	server.sin_port=htons(PORT);
 	server.sin_addr.s_addr=htonl(INADDR_ANY);
@@ -856,10 +926,15 @@ int main(int argc, char *argv[])
 			
 			if(!strcmp(buf,"exit"))	break;
 			memset(buf,'\0',sizeof(buf));
+
+		//sii9135_check_status(cardInfoS.i2cFlag,cardInfoS.i2cFd,&cardInfoS.width,&cardInfoS.height,&cardInfoS.avformat,&cardInfoS.plugin,&cardInfoS.powerStat);	
+
+		//printf("cardInfoS.width: %d\n",cardInfoS.width);
+		//printf("cardInfoS.height: %d\n",cardInfoS.height);
 		}		
 		wait(NULL);
 		close(sockfd);   
-	}*/	
+	}	
 
 		return 0;
 }
